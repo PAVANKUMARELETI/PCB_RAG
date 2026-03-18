@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from bot.memory.embedder import Embedder
 from bot.memory.vector_database.chroma import Chroma
 from core.config import settings
+from openai_embedder import OpenAIEmbedder
 
 
 def init_index(vector_store_path: Path) -> Chroma:
@@ -15,7 +15,10 @@ def init_index(vector_store_path: Path) -> Chroma:
     Returns:
         Chroma: An instance of the Vector Database.
     """
-    embedding = Embedder()
+    embedding = OpenAIEmbedder(
+        api_key=settings.OPENAI_API_KEY,
+        model_name=settings.OPENAI_EMBEDDING_MODEL or settings.EMBEDDING_MODEL,
+    )
     index = Chroma(is_persistent=True, persist_directory=str(vector_store_path), embedding=embedding)
 
     return index
