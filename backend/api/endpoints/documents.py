@@ -1,13 +1,20 @@
 import shutil
 import uuid
+from importlib import import_module
+from io import BytesIO
 from pathlib import Path
 from typing import Annotated
 
+import numpy as np
 from core.config import settings
+from document_loader.format import Format
+from document_loader.text_splitter import create_recursive_text_splitter
 from entities.document import Document
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from helpers.log import get_logger
-from memory_builder import split_chunks
+from bs4 import BeautifulSoup
+from docx import Document as DocxDocument
+from pypdf import PdfReader
 from schemas.documents import DocumentInfo, DocumentListResponse, DocumentUploadResponse
 
 from api.deps import VectorDatabaseDep
@@ -18,6 +25,117 @@ router = APIRouter()
 
 # In-memory store of document metadata; keyed by document_id.
 _documents: dict[str, DocumentInfo] = {}
+
+
+def split_chunks(sources: list[Document], chunk_size: int = 1000, chunk_overlap: int = 50) -> list[Document]:
+    splitter = create_recursive_text_splitter(
+        format=Format.MARKDOWN.value,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    return list(splitter.split_documents(sources))
+
+
+def _extract_pdf_text(content: bytes) -> str:
+    """Extract text from PDF using multiple parsers for better compatibility."""
+    errors: list[str] = []
+
+    # Basic signature check to fail fast for renamed/non-PDF files.
+    if not content.lstrip().startswith(b"%PDF-"):
+        raise ValueError("The uploaded file does not appear to be a valid PDF file.")
+
+    # 1) pypdf (already a dependency)
+    try:
+        reader = PdfReader(BytesIO(content), strict=False)
+        pages = [(page.extract_text() or "") for page in reader.pages]
+        text = "\n".join(pages).strip()
+        if text:
+            return text
+        errors.append("pypdf extracted no text")
+    except Exception as exc:
+        errors.append(f"pypdf: {exc}")
+
+    # 2) PyMuPDF fallback if installed
+    try:
+        fitz = import_module("fitz")
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            text = "\n".join((page.get_text("text") or "") for page in doc).strip()
+        if text:
+            return text
+        errors.append("pymupdf extracted no text")
+    except Exception as exc:
+        errors.append(f"pymupdf: {exc}")
+
+    # 3) pdfminer fallback if installed
+    try:
+        pdfminer_high_level = import_module("pdfminer.high_level")
+        text = (pdfminer_high_level.extract_text(BytesIO(content)) or "").strip()
+        if text:
+            return text
+        errors.append("pdfminer extracted no text")
+    except Exception as exc:
+        errors.append(f"pdfminer: {exc}")
+
+    # 4) OCR fallback for scanned/image-only PDFs
+    try:
+        fitz = import_module("fitz")
+        rapidocr_mod = import_module("rapidocr_onnxruntime")
+        ocr_engine = rapidocr_mod.RapidOCR()
+
+        ocr_text_parts: list[str] = []
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            # Keep OCR bounded for latency/cost on large PDFs.
+            max_pages = min(len(doc), max(1, settings.OCR_MAX_PAGES))
+            for page_index in range(max_pages):
+                page = doc[page_index]
+                pix = page.get_pixmap(matrix=fitz.Matrix(settings.OCR_SCALE, settings.OCR_SCALE), alpha=False)
+                arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+
+                ocr_result, _ = ocr_engine(arr)
+                if not ocr_result:
+                    continue
+
+                # rapidocr line format: [box, text, score]
+                for line in ocr_result:
+                    if len(line) >= 2 and isinstance(line[1], str) and line[1].strip():
+                        ocr_text_parts.append(line[1].strip())
+
+                # Stop early once we have enough text for retrieval indexing.
+                if sum(len(part) for part in ocr_text_parts) >= settings.OCR_MIN_CHARS:
+                    break
+
+        ocr_text = "\n".join(ocr_text_parts).strip()
+        if ocr_text:
+            return ocr_text
+        errors.append("ocr extracted no text")
+    except Exception as exc:
+        errors.append(f"ocr: {exc}")
+
+    raise ValueError(
+        "Unable to read this PDF. It may be corrupted, password-protected, or image-only scanned. "
+        f"Parser details: {' | '.join(errors)}"
+    )
+
+
+def extract_text(content: bytes, suffix: str) -> str:
+    """Extract plain text from supported file types."""
+    if suffix in {".md", ".txt", ".csv", ".json", ".xml"}:
+        return content.decode("utf-8")
+
+    if suffix in {".html", ".htm"}:
+        html = content.decode("utf-8", errors="ignore")
+        soup = BeautifulSoup(html, "html.parser")
+        return soup.get_text(separator="\n", strip=True)
+
+    if suffix == ".pdf":
+        return _extract_pdf_text(content)
+
+    if suffix == ".docx":
+        doc = DocxDocument(BytesIO(content))
+        paragraphs = [p.text for p in doc.paragraphs if p.text]
+        return "\n".join(paragraphs).strip()
+
+    raise ValueError(f"File type '{suffix}' is not supported for text extraction")
 
 
 @router.post(
@@ -60,32 +178,26 @@ async def upload_document(file: Annotated[UploadFile, File(...)], index: VectorD
 
     document_id = str(uuid.uuid4())
     dest_dir = settings.DOCS_PATH / document_id
-    dest_dir.mkdir(parents=True, exist_ok=True)
     file_path = dest_dir / (file.filename or document_id)
-
     content = await file.read()
-    file_path.write_bytes(content)
-
-    doc_info = DocumentInfo(
-        document_id=document_id,
-        filename=file.filename or document_id,
-        size=len(content),
-        content_type=file.content_type or "application/octet-stream",
-    )
-    _documents[document_id] = doc_info
 
     try:
-        page_content = content.decode("utf-8")
-    except UnicodeDecodeError as exc:
+        page_content = extract_text(content, suffix)
+        if not page_content:
+            raise ValueError("No readable text content was found in the uploaded file.")
+    except Exception as exc:
         logger.warning(
-            "Failed to decode uploaded file '%s' as UTF-8: %s",
+            "Failed to extract text from uploaded file '%s': %s",
             file.filename,
             exc,
         )
         raise HTTPException(
             status_code=400,
-            detail="Uploaded file is not valid UTF-8 text and cannot be processed.",
+            detail=f"Could not read file content. {exc}",
         )
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(content)
 
     document = Document(
         page_content=page_content,
@@ -103,9 +215,28 @@ async def upload_document(file: Annotated[UploadFile, File(...)], index: VectorD
     logger.info(f"Number of generated chunks: {num_chunks}")
     logger.info("Adding document chunks to the vector database index...")
 
-    index.from_chunks(chunks)
+    try:
+        index.from_chunks(chunks)
+    except Exception as exc:
+        logger.exception("Failed to index uploaded document '%s': %s", file.filename, exc)
+        if dest_dir.exists():
+            shutil.rmtree(dest_dir)
+        if "OPENAI_API_KEY is not set" in str(exc):
+            raise HTTPException(
+                status_code=500,
+                detail="Backend is missing OPENAI_API_KEY. Set it in .env and restart backend.",
+            )
+        raise HTTPException(status_code=500, detail="Failed to index uploaded document.")
 
     logger.info("Memory Index has been updated successfully!")
+
+    doc_info = DocumentInfo(
+        document_id=document_id,
+        filename=file.filename or document_id,
+        size=len(content),
+        content_type=file.content_type or "application/octet-stream",
+    )
+    _documents[document_id] = doc_info
 
     return DocumentUploadResponse(document_id=document_id, filename=doc_info.filename)
 
