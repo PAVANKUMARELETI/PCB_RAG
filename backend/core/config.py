@@ -31,7 +31,12 @@ class Settings(BaseSettings):
     VECTOR_STORE_PATH: Path = ROOT_PATH / "vector_store" / "docs_index"
     DOCS_PATH: Path = ROOT_PATH / Path("docs")
 
-    MODEL: str = "llama-3.2:1b"
+    MODEL: str = "gpt-4o-mini"
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_API_KEY: str = ""
+
     K: int = 2
     MAX_NEW_TOKENS: int = 512
     CHUNK_SIZE: int = 1000
@@ -39,9 +44,22 @@ class Settings(BaseSettings):
     SYNTHESIS_STRATEGY: str = "tree-summarization"
     CHAT_HISTORY_LENGTH: int = 2
     NUM_RETRIEVALS: int = 2
+    OCR_MAX_PAGES: int = 8
+    OCR_SCALE: float = 1.5
+    OCR_MIN_CHARS: int = 800
 
     WEBSOCKET_MAX_SIZE: int = 10 * 1024 * 1024  # 10 MB
-    ALLOWED_UPLOAD_EXTENSIONS: list[str] = [".md"]
+    ALLOWED_UPLOAD_EXTENSIONS: list[str] = [
+        ".md",
+        ".txt",
+        ".pdf",
+        ".docx",
+        ".html",
+        ".htm",
+        ".csv",
+        ".json",
+        ".xml",
+    ]
 
 
 settings = Settings()
