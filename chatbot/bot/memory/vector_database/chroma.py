@@ -3,7 +3,6 @@ from typing import Any, Iterable
 
 import chromadb
 import chromadb.config
-from bot.memory.embedder import Embedder
 from bot.memory.vector_database.distance_metric import DistanceMetric, get_relevance_score_fn
 from bot.memory.vector_database.id_generator import generate_deterministic_ids
 from chromadb.utils.batch_utils import create_batches
@@ -17,7 +16,7 @@ class Chroma:
     def __init__(
         self,
         client: chromadb.Client = None,
-        embedding: Embedder | None = None,
+        embedding: Any | None = None,
         persist_directory: str | None = None,
         collection_name: str = "default",
         collection_metadata: dict | None = None,
@@ -77,7 +76,7 @@ class Chroma:
         )
 
     @property
-    def embeddings(self) -> Embedder | None:
+    def embeddings(self) -> Any | None:
         return self.embedding
 
     def __query_collection(
