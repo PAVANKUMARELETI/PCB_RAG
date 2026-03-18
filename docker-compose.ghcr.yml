@@ -1,0 +1,31 @@
+services:
+  backend:
+    image: ghcr.io/${GHCR_OWNER}/rag-chatbot-backend:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: rag-backend
+    env_file:
+      - .env
+    volumes:
+      - ./docs:/app/docs
+      - ./vector_store:/app/vector_store
+      - ./models:/app/models
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER}/rag-chatbot-frontend:${IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: rag-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    restart: unless-stopped
