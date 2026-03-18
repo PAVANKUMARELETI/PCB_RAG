@@ -4,7 +4,6 @@ from typing import Any
 from entities.document import Document
 from helpers.log import get_logger
 
-from bot.client.lama_cpp_client import LamaCppClient
 from bot.conversation.chat_history import ChatHistory
 from bot.conversation.ctx_strategy import BaseSynthesisStrategy
 
@@ -12,7 +11,7 @@ logger = get_logger(__name__)
 
 
 async def refine_question(
-    llm: LamaCppClient, question: str, chat_history: ChatHistory, max_new_tokens: int = 128
+    llm: Any, question: str, chat_history: ChatHistory, max_new_tokens: int = 128
 ) -> str:
     """
     Refines the given question based on the chat history.
@@ -52,7 +51,7 @@ async def refine_question(
         return question
 
 
-async def answer(llm: LamaCppClient, question: str, chat_history: ChatHistory, max_new_tokens: int = 512) -> Any:
+async def answer(llm: Any, question: str, chat_history: ChatHistory, max_new_tokens: int = 512) -> Any:
     """
     Generates an answer to the given question based on the chat history or a direct prompt.
 
@@ -97,7 +96,7 @@ async def answer(llm: LamaCppClient, question: str, chat_history: ChatHistory, m
 
 
 async def answer_with_context(
-    llm: LamaCppClient,
+    llm: Any,
     ctx_synthesis_strategy: BaseSynthesisStrategy,
     question: str,
     chat_history: ChatHistory,
@@ -158,7 +157,7 @@ def extract_content_after_reasoning(text: str, reasoning_stop_tag: str) -> str:
 
 # TODO: Use it later
 async def stream_response_with_reasoning(
-    llm: LamaCppClient, user_input: str, chat_history: ChatHistory, max_new_tokens: int
+    llm: Any, user_input: str, chat_history: ChatHistory, max_new_tokens: int
 ) -> tuple[str, str]:
     """
     Streams a response from the language model (LLM) to the user input, including reasoning, and
