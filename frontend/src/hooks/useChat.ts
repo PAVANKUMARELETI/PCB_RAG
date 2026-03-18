@@ -16,41 +16,20 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const wsRef = useRef<ChatWebSocket | null>(null);
   const idRef = useRef(0);
-  const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const ws = new ChatWebSocket(
       (token) => {
         flushSync(() => {
-          // Clear any existing timeout
-          if (streamingTimeoutRef.current) {
-            clearTimeout(streamingTimeoutRef.current);
-          }
-
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.sender !== 'bot') return prev;
             const updated = { ...last, text: last.text + token, isStreaming: true };
             return [...prev.slice(0, -1), updated];
           });
-
-          // Set timeout to mark streaming as done after no tokens for 500ms
-          streamingTimeoutRef.current = setTimeout(() => {
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.sender === 'bot' && last.isStreaming) {
-                return [...prev.slice(0, -1), { ...last, isStreaming: false }];
-              }
-              return prev;
-            });
-            setIsStreaming(false);
-          }, 500);
         });
       },
       (error) => {
-        if (streamingTimeoutRef.current) {
-          clearTimeout(streamingTimeoutRef.current);
-        }
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.sender === 'bot') {
@@ -69,12 +48,19 @@ export function useChat() {
         });
         setIsStreaming(false);
       },
+      () => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.sender === 'bot' && last.isStreaming) {
+            return [...prev.slice(0, -1), { ...last, isStreaming: false }];
+          }
+          return prev;
+        });
+        setIsStreaming(false);
+      },
     );
     wsRef.current = ws;
     return () => {
-      if (streamingTimeoutRef.current) {
-        clearTimeout(streamingTimeoutRef.current);
-      }
       ws.disconnect();
     };
   }, []);

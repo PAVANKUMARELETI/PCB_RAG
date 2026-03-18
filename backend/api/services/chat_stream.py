@@ -16,6 +16,7 @@ from schemas.chat import ChatRequest
 from api.deps import ChatHistoryDep, LamaCppClientDep, VectorDatabaseDep
 
 logger = get_logger(__name__)
+STREAM_DONE_MARKER = "__STREAM_DONE__"
 
 
 # TODO: https://github.com/umbertogriffo/rag-chatbot/pull/10#discussion_r2936567672
@@ -58,9 +59,11 @@ async def stream_chat_response(
 
         took = time.time() - start_time
         logger.info(f"\n--- Took {took:.2f} seconds ---")
+        await websocket.send_text(STREAM_DONE_MARKER)
     except Exception as exc:
         logger.exception("Error during streaming: %s", exc)
         await websocket.send_text("Error during streaming.")
+        await websocket.send_text(STREAM_DONE_MARKER)
 
 
 # TODO: https://github.com/umbertogriffo/rag-chatbot/pull/10#discussion_r2936567672
@@ -132,7 +135,9 @@ async def stream_rag_response(
 
         took = time.time() - start_time
         logger.info(f"\n--- Took {took:.2f} seconds ---")
+        await websocket.send_text(STREAM_DONE_MARKER)
 
     except Exception as exc:
         logger.exception("Error during RAG streaming: %s", exc)
         await websocket.send_text("Error during RAG streaming.")
+        await websocket.send_text(STREAM_DONE_MARKER)

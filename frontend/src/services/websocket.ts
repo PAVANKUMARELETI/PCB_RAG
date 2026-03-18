@@ -1,5 +1,7 @@
 type TokenHandler = (token: string) => void;
 type ErrorHandler = (error: string) => void;
+type DoneHandler = () => void;
+const STREAM_DONE_MARKER = '__STREAM_DONE__';
 
 const WS_BASE = (() => {
   const apiUrl = import.meta.env.VITE_API_URL ?? '';
@@ -16,10 +18,12 @@ export class ChatWebSocket {
   private ws: WebSocket | null = null;
   private readonly onToken: TokenHandler;
   private readonly onError: ErrorHandler;
+  private readonly onDone: DoneHandler;
 
-  constructor(onToken: TokenHandler, onError: ErrorHandler) {
+  constructor(onToken: TokenHandler, onError: ErrorHandler, onDone: DoneHandler) {
     this.onToken = onToken;
     this.onError = onError;
+    this.onDone = onDone;
   }
 
   private connect(): Promise<void> {
@@ -49,7 +53,12 @@ export class ChatWebSocket {
       };
 
       this.ws.onmessage = (event) => {
-        this.onToken(event.data as string);
+        const data = event.data as string;
+        if (data === STREAM_DONE_MARKER) {
+          this.onDone();
+          return;
+        }
+        this.onToken(data);
       };
 
       this.ws.onerror = () => {
