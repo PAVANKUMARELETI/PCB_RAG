@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send } from "lucide-react"
+import { Loader2, Send } from "lucide-react"
 import { ModeToggle, type ChatModes } from "./mode-toggle"
 
 interface ChatInputProps {
@@ -100,6 +100,13 @@ export function ChatInput({
         <p className="text-center text-xs text-muted-foreground/60 mt-2">
           Press Enter to send, Shift + Enter for new line
         </p>
+
+        {isLoading && (
+          <div className="mt-3 flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span className="font-medium">Generating answer, please wait...</span>
+          </div>
+        )}
       </form>
     </div>
   )
