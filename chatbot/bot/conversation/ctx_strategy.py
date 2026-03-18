@@ -5,8 +5,6 @@ from typing import Any
 from entities.document import Document
 from helpers.log import get_logger
 
-from bot.client.lama_cpp_client import LamaCppClient
-
 logger = get_logger(__name__)
 
 
@@ -23,7 +21,7 @@ class BaseSynthesisStrategy:
         llm (LlmClient): The language model client used for generating responses.
     """
 
-    def __init__(self, llm: LamaCppClient) -> None:
+    def __init__(self, llm: Any) -> None:
         """
         Initialize the synthesis strategy with the provided LlmClient.
 
@@ -54,7 +52,7 @@ class CreateAndRefineStrategy(BaseSynthesisStrategy):
     Strategy for sequential refinement of responses using retrieved contents.
     """
 
-    def __init__(self, llm: LamaCppClient):
+    def __init__(self, llm: Any):
         super().__init__(llm)
 
     async def generate_response(
@@ -115,7 +113,7 @@ class TreeSummarizationStrategy(BaseSynthesisStrategy):
     Asynchronous version of TreeSummarizationStrategy.
     """
 
-    def __init__(self, llm: LamaCppClient):
+    def __init__(self, llm: Any):
         super().__init__(llm)
 
     async def generate_prompt_async(self, loop, question: str, content: Document, idx: int) -> tuple[int, str]:
