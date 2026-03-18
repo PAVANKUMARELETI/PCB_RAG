@@ -2,6 +2,7 @@ import shutil
 import uuid
 from importlib import import_module
 from io import BytesIO
+import mimetypes
 from pathlib import Path
 from typing import Annotated
 
@@ -25,6 +26,39 @@ router = APIRouter()
 
 # In-memory store of document metadata; keyed by document_id.
 _documents: dict[str, DocumentInfo] = {}
+
+
+def _hydrate_documents_from_disk() -> None:
+    """Rebuild in-memory document metadata from docs folder if available."""
+    if _documents:
+        return
+
+    docs_path = settings.DOCS_PATH
+    if not docs_path.exists():
+        return
+
+    hydrated: dict[str, DocumentInfo] = {}
+    for child in docs_path.iterdir():
+        if not child.is_dir():
+            continue
+
+        document_id = child.name
+        files = [f for f in child.iterdir() if f.is_file()]
+        if not files:
+            continue
+
+        # Keep deterministic behavior when multiple files exist in one document folder.
+        file_path = sorted(files, key=lambda p: p.name)[0]
+        guessed_type, _ = mimetypes.guess_type(file_path.name)
+
+        hydrated[document_id] = DocumentInfo(
+            document_id=document_id,
+            filename=file_path.name,
+            size=file_path.stat().st_size,
+            content_type=guessed_type or "application/octet-stream",
+        )
+
+    _documents.update(hydrated)
 
 
 def split_chunks(sources: list[Document], chunk_size: int = 1000, chunk_overlap: int = 50) -> list[Document]:
@@ -162,6 +196,8 @@ async def upload_document(file: Annotated[UploadFile, File(...)], index: VectorD
         HTTPException: 400 if file type is not supported.
         HTTPException: 409 if a document with the same filename already exists.
     """
+    _hydrate_documents_from_disk()
+
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in settings.ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(
@@ -249,6 +285,7 @@ async def list_documents():
     Returns:
         DocumentListResponse containing a list of all document metadata.
     """
+    _hydrate_documents_from_disk()
     return DocumentListResponse(documents=list(_documents.values()))
 
 
@@ -271,6 +308,8 @@ async def delete_document(document_id: str, index: VectorDatabaseDep):
     Raises:
         HTTPException: 404 if the document with the given ID is not found.
     """
+    _hydrate_documents_from_disk()
+
     if document_id not in _documents:
         raise HTTPException(status_code=404, detail=f"Document '{document_id}' not found.")
 
