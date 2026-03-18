@@ -1,32 +1,88 @@
-import { useEffect, useRef } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ChatMessage, type Message } from "./chat-message"
-import { Bot, Sparkles } from "lucide-react"
+import { ArrowDown, Sparkles } from "lucide-react"
 
 interface ChatViewportProps {
   messages: Message[]
+  isStreaming: boolean
 }
 
-export function ChatViewport({ messages }: ChatViewportProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+export function ChatViewport({ messages, isStreaming }: ChatViewportProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const prevMessageCountRef = useRef(0)
+  const [userNearBottom, setUserNearBottom] = useState(true)
+
+  const isNearBottom = (el: HTMLDivElement, threshold = 96) => {
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    return distanceFromBottom <= threshold
+  }
+
+  const updateNearBottomState = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    setUserNearBottom(isNearBottom(el))
+  }, [])
+
+  const jumpToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+    setUserNearBottom(true)
+  }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    const viewportEl = scrollContainerRef.current
+    if (!viewportEl) {
+      prevMessageCountRef.current = messages.length
+      return
+    }
+
+    const hasNewMessage = messages.length > prevMessageCountRef.current
+    const shouldStickToBottom = hasNewMessage || userNearBottom
+
+    if (shouldStickToBottom) {
+      jumpToLatest(hasNewMessage ? "smooth" : "auto")
+    }
+
+    prevMessageCountRef.current = messages.length
+  }, [messages, userNearBottom, jumpToLatest])
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      setUserNearBottom(true)
+      prevMessageCountRef.current = 0
+    }
+  }, [messages.length])
 
   if (messages.length === 0) {
     return <EmptyState />
   }
 
   return (
-    <ScrollArea className="flex-1 px-4">
-      <div className="max-w-4xl mx-auto py-8 space-y-6">
-        {messages.map((message) => (
-          <ChatMessage key={message.id} message={message} />
-        ))}
-        <div ref={bottomRef} />
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={scrollContainerRef}
+        onScroll={updateNearBottomState}
+        className="h-full overflow-y-auto px-4"
+      >
+        <div className="max-w-4xl mx-auto py-8 space-y-6">
+          {messages.map((message) => (
+            <ChatMessage key={message.id} message={message} />
+          ))}
+        </div>
       </div>
-    </ScrollArea>
+
+      {isStreaming && !userNearBottom && (
+        <button
+          type="button"
+          onClick={() => jumpToLatest()}
+          className="absolute bottom-5 right-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-sm transition hover:bg-background"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          Jump to latest
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -34,21 +90,27 @@ function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4">
       <div className="max-w-2xl w-full text-center space-y-8">
-        {/* Logo/Icon */}
-        <div className="relative mx-auto w-20 h-20">
-          <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl" />
-          <div className="relative flex items-center justify-center w-full h-full rounded-full bg-secondary border border-border">
-            <Bot className="h-10 w-10 text-primary" />
-          </div>
+        {/* Official Logos */}
+        <div className="flex items-center justify-center gap-4">
+          <img
+            src="/uppcb_logo.png"
+            alt="UPPCB"
+            className="h-14 w-14 rounded-lg border border-border bg-white object-contain p-1"
+          />
+          <img
+            src="/up_govt_png.webp"
+            alt="Government of Uttar Pradesh"
+            className="h-14 w-14 rounded-lg border border-border bg-white object-contain p-1"
+          />
         </div>
 
         {/* Welcome Text */}
         <div className="space-y-3">
           <h1 className="text-3xl font-semibold text-foreground tracking-tight text-balance">
-            Welcome to Autara AI
+            Welcome to PCB_RAG_AI
           </h1>
           <p className="text-muted-foreground text-lg leading-relaxed max-w-md mx-auto text-pretty">
-            Your intelligent assistant for conversations, document Q&A, and research.
+            Ask questions on official UPPCB documents with retrieval-augmented answers.
           </p>
         </div>
 
@@ -92,21 +154,21 @@ function EmptyState() {
 const capabilities = [
   {
     title: "Document Q&A",
-    description: "Upload Markdown files for Q&A.",
+    description: "Upload official circulars, notices, and policy documents.",
   },
   {
-    title: "(WIP) Deep Reasoning",
-    description: "(WIP) Enable step-by-step reasoning for complex problem solving.",
+    title: "Reliable Retrieval",
+    description: "Answers are generated from uploaded documents with source context.",
   },
   {
-    title: "(WIP) Web Research",
-    description: "(WIP) Search the web in real-time to find current information.",
+    title: "Official Use",
+    description: "Designed for a simple and formal public information workflow.",
   },
 ]
 
 const suggestions = [
-  "Explain quantum computing",
-  "Review my code",
-  "Summarize a document",
-  "Help me brainstorm",
+  "Summarize the latest air consent guidelines",
+  "What are the required documents for consent to establish?",
+  "List key compliance dates mentioned in this circular",
+  "Show important points from hazardous waste rules",
 ]

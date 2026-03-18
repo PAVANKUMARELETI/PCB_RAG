@@ -16,6 +16,7 @@ interface DocumentUploadProps {
   onError: (message: string) => void
   isExpanded: boolean
   onToggleExpand: () => void
+  showToggle?: boolean
 }
 
 export function DocumentUpload({
@@ -28,6 +29,7 @@ export function DocumentUpload({
   onError,
   isExpanded,
   onToggleExpand,
+  showToggle = true,
 }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
 
@@ -102,7 +104,7 @@ export function DocumentUpload({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  if (!isExpanded && documents.length === 0) {
+  if (showToggle && !isExpanded && documents.length === 0) {
     return (
       <Button
         variant="ghost"
@@ -133,7 +135,7 @@ export function DocumentUpload({
           <input
             type="file"
             multiple
-            accept=".md,.txt,.pdf,.html"
+            accept=".md,.txt,.pdf,.docx,.html,.htm,.csv,.json,.xml"
             onChange={handleFileInput}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
@@ -152,7 +154,7 @@ export function DocumentUpload({
                 Drag & drop files here
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                or click to browse &middot; .md .txt .pdf .html
+                or click to browse &middot; .md .txt .pdf .docx .html .csv
               </p>
             </div>
           </div>
@@ -208,7 +210,7 @@ export function DocumentUpload({
         </div>
       )}
 
-      {(isExpanded || documents.length > 0) && (
+      {showToggle && (isExpanded || documents.length > 0) && (
         <Button
           variant="ghost"
           size="sm"
